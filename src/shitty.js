@@ -13,14 +13,32 @@
 var game = new Object;
 
 game.resolution = {
-    heigth: 240,
+    height: 240,
     width: 320
 };
 
 game.speed = 10;
 
 game.pipe = {/* Background pipe segments */
-  path: "res/pipes/", /* path to pipe images */
+  path: "../res/pipes/", /* path to pipe images */
+  base_modifiers: [ // pipe modifiers
+    "",
+    "_short",
+    "_alter",
+    "_long",
+    /*"_extralong",
+    "_alter2",
+    "_left",
+    "_right", */
+  ],
+  max_modifiers: 2, // 0-2 modifiers per pipe possible
+  modifiers_prob: { // modifiers with probabilities
+    "_short": 0.5,
+    "_alter2_short": 0.5, // just examples, will be filled by init code
+  },
+  available: { // set of available pipe segments
+    "101-111_short": true // just examples, will be filled by init code
+  },
   current: {/* new pipe segment entering the screen */
     height: 240,/* height of the pipes segment image */
     width: 320,/* width of our image, default 320 */
@@ -55,7 +73,7 @@ game.mrBrown = {/* Our hero sprite! */
       height: 40,/* height of Mr.Brown sprite*/
       width: 40,/* width of Mr.Brown sprite*/
       setInitPosition: function () { /* define a function to calculate the initial top left corner position of Mr.Brown sprite */
-        this.position.y = Math.round((game.resolution.heigth*0.382) - (game.mrBrown.image.height/2)) /* default: golden ratio */
+        this.position.y = Math.round((game.resolution.height*0.382) - (game.mrBrown.image.height/2)) /* default: golden ratio */
         this.position.x = Math.round(game.resolution.width/2) /* default startposition: middle lane*/
        },
       position: {}
@@ -92,34 +110,120 @@ game.init = function init(){ /* Initialising canvas */
   document.body.appendChild(this.canvas); /* adds the canvas to the html <body> element */
 
   this.canvas.width = this.resolution.width; /* apply the defined screen resolution to the canvas */
-  this.canvas.height = this.resolution.heigth;
+  this.canvas.height = this.resolution.height;
   this.context = this.canvas.getContext('2d'); /* provide a 2D rendering context for the drawing surface of a <canvas> element. */
 
   // TESTING
   var img = new Image();
-  img.src = "../res/pipes/010/010-010.png";
+  img.src = "010/010-010.png";
   game.context.drawImage(img,0,0)
+
+  var lastPercent = 0;
+  var pipesPromise = loadPipes(function(percent){
+    if (percent < lastPercent + 0.01) return;
+    game.context.beginPath();
+    var w = game.resolution.width, h = game.resolution.height;
+    game.context.arc(w/2,h/2, w/3, 0, percent*2*Math.PI);
+    game.context.strokeStyle = "black";
+    game.context.stroke();
+    lastPercent = percent;
+  });
+  pipesPromise.then(function(){
+    console.log(game);
+  });
+  fileCheck("../res/pipes/111/111-111.png", console.log.bind(console));
+};
+
+function loadPipes(percentCallback) {
+  var bases = ["001","010","011","100","101","110","111"];
+  var modifier_combinations = 0;
+  var modifiers_num = {};
+  game.pipe.available = {};
+  var promises = [];
+  var totalTries = 10, doneTries = 0;
+  for (var i_from in bases) {
+    var base_from = bases[i_from];
+    for (var i_to in bases) {
+      var base_to = bases[i_to];
+      var from_to_path = game.pipe.path + base_from + "/" +
+        base_from + "-" + base_to;
+
+      for (var i_mod in game.pipe.base_modifiers) {
+        var mod1 = game.pipe.base_modifiers[i_mod]
+        for (var i_mod2 in game.pipe.base_modifiers) {
+          totalTries++;
+          var mod2 = game.pipe.base_modifiers[i_mod2];
+          var modifier = mod1 + mod2;
+          var path = from_to_path + mod1 + mod2 + ".png";
+          var promise = new Promise(function(path, resolve, reject){
+            fileCheck(path, function(base_from, base_to, modifier, exists){
+              if (!exists) {
+                resolve();
+                return;
+              }
+              if (modifiers_num[modifier]) {
+                modifiers_num[modifier]++;
+              } else {
+                modifiers_num[modifier] = 1;
+              }
+              game.pipe.available[base_from + "-" + base_to + modifier] = true;
+              resolve();
+              doneTries++;
+              percentCallback(doneTries / totalTries);
+            }.bind(this, base_from, base_to, modifier));
+          }.bind(this, path));
+          promises.push(promise);
+        }
+      }
+    }
+  }
+  return new Promise(function(resolve, reject){
+    Promise.all(promises).then(function(){
+      game.pipe.modifiers_prob = {};
+      var all = 0;
+      for (var mod in modifiers_num) {
+        all += modifiers_num[mod];
+      }
+      for (var mod in modifiers_num) {
+        var num = modifiers_num[mod];
+        game.pipe.modifiers_prob[mod] = num / all;
+      }
+      console.log(game.pipe);
+      resolve();
+      percentCallback(1);
+    });
+  });
 };
 
 /** fileCheck(path)
 * hacked function to check if a randomly generated image exists
-* @param  {string} path to image
-* @return {booleans}
+* @param {string} path to image
+* @param {function} will be called with boolean
 */
-function fileCheck(path) {
+function fileCheck(path, callback) {
   var img = new Image(); /* define the variable 'img' as a new Image */
   img.src = path; /* set the source of this 'img' with the path that is passed as argument to the function */
-  var pixelState = game.context.getImageData(0,0,1,1).data; /* get the original color of the upper right screencorner 1x1 testpixel */
-    console.log("pixelState before: " + pixelState.join("")); /* DEBUG Information for developers in the console */
-  game.context.drawImage(img, 0,0,1,1); /* draw the possibly existing image in size 1x1px in this testpixel */
-  var pixelHack = game.context.getImageData(0,0,1,1).data; /* if the image exists, it will been drawn and changes the color of that pixel */
-    console.log("pixelState after: " + pixelState.join("")); /* DEBUG Information for developers in the console */
-  game.context.fillStyle = "rgba(" + pixelState.join(",") + ")"; /* prepare the old color for a rectangle to overwrite that testpixel */
-  game.context.fillRect(0,0,1,1); /* draw a 1x1 rectangle at the testpixel with the original color*/
+  img.onload = function() {
+    var originalState = game.context.getImageData(0,0,1,1).data; /* get the original color of the upper right screencorner 1x1 testpixel */
+
+    game.context.clearRect(0,0,1,1); // clear the state
+    var pixelState = game.context.getImageData(0,0,1,1).data;
+    console.log("pixelState before: " + pixelState.join(",")); /* DEBUG Information for developers in the console */
+
+    game.context.drawImage(img, 0,0,1,1); /* draw the possibly existing image in size 1x1px in this testpixel */
+    var pixelHack = game.context.getImageData(0,0,1,1).data; /* if the image exists, it will been drawn and changes the color of that pixel */
+    console.log("pixelState after:  " + pixelHack.join(",")); /* DEBUG Information for developers in the console */
+
+    game.context.fillStyle = "rgba(" + originalState.join(",") + ")"; /* prepare the old color for a rectangle to overwrite that testpixel */
+    game.context.fillRect(0,0,1,1); /* draw a 1x1 rectangle at the testpixel with the original color*/
     var pixelReckt = game.context.getImageData(0,0,1,1).data; /* get the new testpixel color after the rectangle was drawn */
-    console.log("pixelState afterafter: " + pixelReckt.join("")); /* DEBUG Information for developers in the console */
-  if (pixelState.join("") === pixelHack.join(""))/* compare if the color of this pixel has changed */
-    return false;/* false if the pixelcolor stayed the same aka. the file didn't exist and wasn't drawn */
-  else
-    return true;/* true if the pixelcolor was changed aka. the file exists */
+    console.log("pixelState afterresetting: " + pixelReckt.join(",")); /* DEBUG Information for developers in the console */
+    if (pixelState.join("") === pixelHack.join(""))/* compare if the color of this pixel has changed */
+      callback(false);/* false if the pixelcolor stayed the same aka. the file didn't exist and wasn't drawn */
+    else
+      callback(true);/* true if the pixelcolor was changed aka. the file exists */
+  }
+  img.onerror = function() {
+    callback(false);
+  }
 }
