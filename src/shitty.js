@@ -121,11 +121,17 @@ game.init = function init(){ /* Initialising canvas */
   var lastPercent = 0;
   var pipesPromise = loadPipes(function(percent){
     if (percent < lastPercent + 0.01) return;
-    game.context.beginPath();
     var w = game.resolution.width, h = game.resolution.height;
-    game.context.arc(w/2,h/2, w/3, 0, percent*2*Math.PI);
-    game.context.strokeStyle = "black";
-    game.context.stroke();
+    game.context.clearRect(0,0,w,h);
+    game.context.beginPath();
+    game.context.moveTo(w/2, h/2);
+    //game.context.lineTo(w/2, h/6);
+    var start = -0.5 * Math.PI + percent * 0.7 * Math.PI;
+    var pos = start + percent*2*Math.PI;
+    game.context.arc(w/2,h/2, w/4, start, pos);
+    game.context.lineTo(w/2, h/2);
+    game.context.fillStyle = "#dd3";
+    game.context.fill();
     lastPercent = percent;
   });
   pipesPromise.then(function(){
@@ -158,6 +164,8 @@ function loadPipes(percentCallback) {
           var promise = new Promise(function(path, resolve, reject){
             fileCheck(path, function(base_from, base_to, modifier, exists){
               if (!exists) {
+                doneTries++;
+                percentCallback(doneTries / totalTries);
                 resolve();
                 return;
               }
