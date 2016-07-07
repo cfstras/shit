@@ -26,10 +26,10 @@ game.pipe = {/* Background pipe segments */
     "_short",
     "_alter",
     "_long",
-    /*"_extralong",
-    "_alter2",
-    "_left",
-    "_right", */
+    //"_extralong",
+    //"_alter2",
+    //"_left",
+    //"_right",
   ],
   max_modifiers: 2, // 0-2 modifiers per pipe possible
   modifiers_prob: { // modifiers with probabilities
@@ -47,7 +47,7 @@ game.pipe = {/* Background pipe segments */
     path: this.top + "/", /* path of pipe images with the same top connectors, default: "010/" */
     kind: "_short", /* the 'kind' of a segment provides infos e.g. about crossings or imageheight, default: "_short" */
     setImagePath: function () { /* define a function to calculate an image path with passed connectors */
-      this.imagePath = this.top + "-" + this.bottom + this.kind + ".png"; /* Imagepath of a 1-3 pipes segment, e.g. "010-010_short.png" */
+      this.imagePath = this.top + "-" + this.bottom + this.kind; /* Imagepath of a 1-3 pipes segment, e.g. "010-010_short.png" */
     },
     imagePath: "",
     image: 0 /* new Image() coming soon */
@@ -60,7 +60,7 @@ game.pipe = {/* Background pipe segments */
     path: this.top + "/", /* path of pipe images with the same top connectors, default: "010/" */
     kind: "_short", /* the 'kind' of a segment provides infos e.g. about crossings or imageheight, default: "_short" */
     setImagePath: function () { /* define a function to calculate an image path with passed connectors */
-      this.imagePath = this.top + "-" + this.bottom + this.kind + ".png"; /* Imagepath of a 1-3 pipes segment, e.g. "010-010_short.png" */
+      this.imagePath = this.top + "-" + this.bottom + this.kind; /* Imagepath of a 1-3 pipes segment, e.g. "010-010_short.png" */
     },
     imagePath: "",
     image: 0 /* new Image() coming soon */
@@ -68,7 +68,6 @@ game.pipe = {/* Background pipe segments */
 };
 
 game.mrBrown = {/* Our hero sprite! */
-    path:"res/sprites/", /* path to sprite images */
     image: {
       height: 40,/* height of Mr.Brown sprite*/
       width: 40,/* width of Mr.Brown sprite*/
@@ -76,15 +75,20 @@ game.mrBrown = {/* Our hero sprite! */
         this.position.y = Math.round((game.resolution.height*0.382) - (game.mrBrown.image.height/2)) /* default: golden ratio */
         this.position.x = Math.round(game.resolution.width/2) /* default startposition: middle lane*/
        },
-      position: {}
-
- //     standard: this.mrBrown.path + "mrbrown.gif"/* animated shit sprite Mr. Brown */
-      /* more movement animation todo...
-      leftmove: this.mrBrown.path + "mrbrownleft.gif",
-      rightmove: this.mrBrown.path + "mrbrownright.gif",
-      collision: this.mrBrown.path + "mrbrownsplash.gif",
-      */
-    }
+      position: {},
+      paths: {
+        base:"../res/sprites/", /* path to sprite images */
+        standard: "mrbrown.gif", /* animated shit sprite Mr. Brown */
+        /* more movement animation todo...
+        leftmove: this.mrBrown.path + "mrbrownleft.gif",
+        rightmove: this.mrBrown.path + "mrbrownright.gif",
+        collision: this.mrBrown.path + "mrbrownsplash.gif",
+        */
+      },
+      data: {
+        // will be filled upon load
+      },
+    },
 };
 
 game.random = {/* random generator for pipes */
@@ -120,7 +124,7 @@ game.init = function init(){ /* Initialising canvas */
 
   var lastPercent = 0;
   var pipesPromise = loadPipes(function(percent){
-    if (percent < lastPercent + 0.01) return;
+    if (percent < lastPercent + 0.003) return;
     var w = game.resolution.width, h = game.resolution.height;
     game.context.clearRect(0,0,w,h);
     game.context.beginPath();
@@ -136,6 +140,11 @@ game.init = function init(){ /* Initialising canvas */
   });
   pipesPromise.then(function(){
     console.log(game);
+
+    game.pipe.current.setImagePath();
+    var image = game.pipe.available[game.pipe.current.imagePath];
+    game.context.drawImage(image, 0,0, image.width, image.height);
+
   });
   fileCheck("../res/pipes/111/111-111.png", console.log.bind(console));
 };
@@ -162,8 +171,8 @@ function loadPipes(percentCallback) {
           var modifier = mod1 + mod2;
           var path = from_to_path + mod1 + mod2 + ".png";
           var promise = new Promise(function(path, resolve, reject){
-            fileCheck(path, function(base_from, base_to, modifier, exists){
-              if (!exists) {
+            fileCheck(path, function(base_from, base_to, modifier, image){
+              if (!image) {
                 doneTries++;
                 percentCallback(doneTries / totalTries);
                 resolve();
@@ -174,7 +183,7 @@ function loadPipes(percentCallback) {
               } else {
                 modifiers_num[modifier] = 1;
               }
-              game.pipe.available[base_from + "-" + base_to + modifier] = true;
+              game.pipe.available[base_from + "-" + base_to + modifier] = image;
               resolve();
               doneTries++;
               percentCallback(doneTries / totalTries);
@@ -185,6 +194,21 @@ function loadPipes(percentCallback) {
       }
     }
   }
+  // load mr. brown images
+  for (var type in game.mrBrown.image.paths) {
+    if (type == "base") continue;
+    var path = game.mrBrown.image.paths.base + game.mrBrown.image.paths[type];
+    promises.push(new Promise(function(resolve, reject){
+      fileCheck(path, function(data){
+        if (!data) {
+          reject("mr brown "+ type + " not found!");
+        }
+        game.mrBrown.image.data[type];
+        resolve();
+      });
+    }));
+  }
+
   return new Promise(function(resolve, reject){
     Promise.all(promises).then(function(){
       game.pipe.modifiers_prob = {};
@@ -216,20 +240,20 @@ function fileCheck(path, callback) {
 
     game.context.clearRect(0,0,1,1); // clear the state
     var pixelState = game.context.getImageData(0,0,1,1).data;
-    console.log("pixelState before: " + pixelState.join(",")); /* DEBUG Information for developers in the console */
+    //console.log("pixelState before: " + pixelState.join(",")); /* DEBUG Information for developers in the console */
 
     game.context.drawImage(img, 0,0,1,1); /* draw the possibly existing image in size 1x1px in this testpixel */
     var pixelHack = game.context.getImageData(0,0,1,1).data; /* if the image exists, it will been drawn and changes the color of that pixel */
-    console.log("pixelState after:  " + pixelHack.join(",")); /* DEBUG Information for developers in the console */
+    //console.log("pixelState after:  " + pixelHack.join(",")); /* DEBUG Information for developers in the console */
 
     game.context.fillStyle = "rgba(" + originalState.join(",") + ")"; /* prepare the old color for a rectangle to overwrite that testpixel */
     game.context.fillRect(0,0,1,1); /* draw a 1x1 rectangle at the testpixel with the original color*/
     var pixelReckt = game.context.getImageData(0,0,1,1).data; /* get the new testpixel color after the rectangle was drawn */
-    console.log("pixelState afterresetting: " + pixelReckt.join(",")); /* DEBUG Information for developers in the console */
+    //console.log("pixelState afterresetting: " + pixelReckt.join(",")); /* DEBUG Information for developers in the console */
     if (pixelState.join("") === pixelHack.join(""))/* compare if the color of this pixel has changed */
       callback(false);/* false if the pixelcolor stayed the same aka. the file didn't exist and wasn't drawn */
     else
-      callback(true);/* true if the pixelcolor was changed aka. the file exists */
+      callback(img);/* true if the pixelcolor was changed aka. the file exists */
   }
   img.onerror = function() {
     callback(false);
