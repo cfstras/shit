@@ -17,7 +17,7 @@ game.resolution = {
     width: 320
 };
 
-game.speed = 40; // pixels per second
+game.speed = 50; // pixels per second
 
 game.state = {
   loadPercent: 0,
@@ -202,6 +202,7 @@ function loadPipes() {
   var modifier_combinations = 0;
   var modifiers_num = {};
   game.pipe.available = {};
+  game.pipe.availByTop = {};
   var promises = [];
   var totalTries = 0, doneTries = 0;
   totalTries += 10; // for the stat calculation
