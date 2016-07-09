@@ -17,9 +17,18 @@ game.resolution = {
     width: 320
 };
 
-game.speed = 10;
+game.speed = 0.1;
+
+game.state = {
+  loadPercent: 0,
+  renderFunc: loadScreen,
+  animFrame: null,
+  t: 0, // time in seconds
+  dt: 0, // time since last frame
+};
 
 game.pipe = {/* Background pipe segments */
+  offset: 0, // how much the current pipe has moved upward, in screen heights
   path: "../res/pipes/", /* path to pipe images */
   base_modifiers: [ // pipe modifiers
     "",
@@ -37,33 +46,27 @@ game.pipe = {/* Background pipe segments */
     "_alter2_short": 0.5, // just examples, will be filled by init code
   },
   available: { // set of available pipe segments
-    "101-111_short": true // just examples, will be filled by init code
+    "101-111_short": new Image() // just an example, will be filled by init code
   },
   current: {/* new pipe segment entering the screen */
     height: 240,/* height of the pipes segment image */
     width: 320,/* width of our image, default 320 */
     top: "010", /* top connections of 3 lanes, default start: one middle lane */
     bottom: "010", /* bottom connections of 3 lanes, default: middle lane */
-    path: this.top + "/", /* path of pipe images with the same top connectors, default: "010/" */
     kind: "_short", /* the 'kind' of a segment provides infos e.g. about crossings or imageheight, default: "_short" */
     setImagePath: function () { /* define a function to calculate an image path with passed connectors */
       this.imagePath = this.top + "-" + this.bottom + this.kind; /* Imagepath of a 1-3 pipes segment, e.g. "010-010_short.png" */
     },
-    imagePath: "",
-    image: 0 /* new Image() coming soon */
   },
   last: {/* pipe segment which leaves the screen */
     height: 240,/* height of the pipes segment image, default: 240px */
     width: 320,/* width of our image, default: 320px */
-    top: "010", /* top connections of 3 lanes, default: start one middle lane */
+    top: "001", /* top connections of 3 lanes, default: start one middle lane */
     bottom: "010", /* bottom connections of 3 lanes, default: middle lane */
-    path: this.top + "/", /* path of pipe images with the same top connectors, default: "010/" */
     kind: "_short", /* the 'kind' of a segment provides infos e.g. about crossings or imageheight, default: "_short" */
     setImagePath: function () { /* define a function to calculate an image path with passed connectors */
       this.imagePath = this.top + "-" + this.bottom + this.kind; /* Imagepath of a 1-3 pipes segment, e.g. "010-010_short.png" */
     },
-    imagePath: "",
-    image: 0 /* new Image() coming soon */
   }
 };
 
@@ -117,45 +120,80 @@ game.init = function init(){ /* Initialising canvas */
   this.canvas.height = this.resolution.height;
   this.context = this.canvas.getContext('2d'); /* provide a 2D rendering context for the drawing surface of a <canvas> element. */
 
-  // TESTING
-  var img = new Image();
-  img.src = "010/010-010.png";
-  game.context.drawImage(img,0,0)
+  game.state.animFrame = requestAnimationFrame(render);
 
-  var lastPercent = 0;
-  var pipesPromise = loadPipes(function(percent){
-    if (percent < lastPercent + 0.003) return;
-    var w = game.resolution.width, h = game.resolution.height;
-    game.context.clearRect(0,0,w,h);
-    game.context.beginPath();
-    game.context.moveTo(w/2, h/2);
-    //game.context.lineTo(w/2, h/6);
-    var start = -0.5 * Math.PI + percent * 0.7 * Math.PI;
-    var pos = start + percent*2*Math.PI;
-    game.context.arc(w/2,h/2, w/4, start, pos);
-    game.context.lineTo(w/2, h/2);
-    game.context.fillStyle = "#dd3";
-    game.context.fill();
-    lastPercent = percent;
-  });
+  var pipesPromise = loadPipes();
   pipesPromise.then(function(){
     console.log(game);
-
     game.pipe.current.setImagePath();
-    var image = game.pipe.available[game.pipe.current.imagePath];
-    game.context.drawImage(image, 0,0, image.width, image.height);
+    game.pipe.last.setImagePath();
+    game.state.renderFunc = fall;
 
   });
   fileCheck("../res/pipes/111/111-111.png", console.log.bind(console));
-};
+}
 
-function loadPipes(percentCallback) {
+function render(t) {
+  game.state.animFrame = requestAnimationFrame(render);
+  t /= 1000; // from ms to s
+  game.state.dt = t - game.state.t;
+  game.state.t = t;
+
+  game.state.renderFunc();
+}
+
+function loadScreen() {
+  var percent = game.state.loadPercent;
+  var w = game.resolution.width, h = game.resolution.height;
+  game.context.clearRect(0,0,w,h);
+  game.context.beginPath();
+  game.context.moveTo(w/2, h/2);
+  //game.context.lineTo(w/2, h/6);
+  var start = -0.5 * Math.PI + percent * 0.7 * Math.PI;
+  var pos = start + percent*2*Math.PI;
+  game.context.arc(w/2,h/2, w/4, start, pos);
+  game.context.lineTo(w/2, h/2);
+  game.context.fillStyle = "hsl(56,"+percent*100+"%,50%)";
+  game.context.fill();
+}
+
+function fall() {
+  var w = game.resolution.width, h = game.resolution.height;
+  var offset = game.pipe.offset;
+  var currentImage = game.pipe.available[game.pipe.current.imagePath];
+  var lastImage = game.pipe.available[game.pipe.last.imagePath];
+  
+  game.context.clearRect(0, 0, w, h);
+  game.context.drawImage(lastImage,
+    0, -offset * lastImage.height,
+    lastImage.width, lastImage.height)
+  game.context.drawImage(currentImage,
+    0, -offset * currentImage.height + currentImage.height,
+    currentImage.width, currentImage.height);
+
+  game.pipe.offset += game.state.dt * game.speed;
+  if (game.pipe.offset >= 1) {
+    game.pipe.offset -= 1;
+    var next = game.pipe.last;
+    game.pipe.last = game.pipe.current;
+
+    next.top = game.pipe.last.bottom;
+    next.bottom = next.top; // TODO randomly generate
+    next.setImagePath();
+    game.pipe.current = next;
+    console.log("next pipe:", game.pipe.current);
+  }
+}
+
+function loadPipes() {
   var bases = ["001","010","011","100","101","110","111"];
   var modifier_combinations = 0;
   var modifiers_num = {};
   game.pipe.available = {};
   var promises = [];
-  var totalTries = 10, doneTries = 0;
+  var totalTries = 0, doneTries = 0;
+  totalTries += 10; // for the stat calculation
+  totalTries += Object.keys(game.mrBrown.image.paths).length - 1; // base does not count
   for (var i_from in bases) {
     var base_from = bases[i_from];
     for (var i_to in bases) {
@@ -172,9 +210,9 @@ function loadPipes(percentCallback) {
           var path = from_to_path + mod1 + mod2 + ".png";
           var promise = new Promise(function(path, resolve, reject){
             fileCheck(path, function(base_from, base_to, modifier, image){
+              doneTries++;
+              game.state.loadPercent = doneTries / totalTries;
               if (!image) {
-                doneTries++;
-                percentCallback(doneTries / totalTries);
                 resolve();
                 return;
               }
@@ -185,8 +223,6 @@ function loadPipes(percentCallback) {
               }
               game.pipe.available[base_from + "-" + base_to + modifier] = image;
               resolve();
-              doneTries++;
-              percentCallback(doneTries / totalTries);
             }.bind(this, base_from, base_to, modifier));
           }.bind(this, path));
           promises.push(promise);
@@ -200,6 +236,8 @@ function loadPipes(percentCallback) {
     var path = game.mrBrown.image.paths.base + game.mrBrown.image.paths[type];
     promises.push(new Promise(function(resolve, reject){
       fileCheck(path, function(data){
+        doneTries++;
+        game.state.loadPercent = doneTries / totalTries;
         if (!data) {
           reject("mr brown "+ type + " not found!");
         }
@@ -209,21 +247,21 @@ function loadPipes(percentCallback) {
     }));
   }
 
-  return new Promise(function(resolve, reject){
-    Promise.all(promises).then(function(){
-      game.pipe.modifiers_prob = {};
-      var all = 0;
-      for (var mod in modifiers_num) {
-        all += modifiers_num[mod];
-      }
-      for (var mod in modifiers_num) {
-        var num = modifiers_num[mod];
-        game.pipe.modifiers_prob[mod] = num / all;
-      }
-      console.log(game.pipe);
-      resolve();
-      percentCallback(1);
-    });
+  return Promise.all(promises).then(function(){
+    game.pipe.modifiers_prob = {};
+    var all = 0;
+    for (var mod in modifiers_num) {
+      all += modifiers_num[mod];
+    }
+    doneTries += 5;
+    game.state.loadPercent = doneTries / totalTries;
+    for (var mod in modifiers_num) {
+      var num = modifiers_num[mod];
+      game.pipe.modifiers_prob[mod] = num / all;
+    }
+    console.log(game.pipe);
+    doneTries += 5;
+    game.state.loadPercent = doneTries / totalTries;
   });
 };
 
