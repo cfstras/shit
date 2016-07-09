@@ -17,7 +17,7 @@ game.resolution = {
     width: 320
 };
 
-game.speed = 0.1;
+game.speed = 40; // pixels per second
 
 game.state = {
   loadPercent: 0,
@@ -28,7 +28,7 @@ game.state = {
 };
 
 game.pipe = {/* Background pipe segments */
-  offset: 0, // how much the current pipe has moved upward, in screen heights
+  offset: 0, // how much the current pipe has moved upward, in pixels
   path: "../res/pipes/", /* path to pipe images */
   base_modifiers: [ // pipe modifiers
     "",
@@ -48,6 +48,9 @@ game.pipe = {/* Background pipe segments */
   available: { // set of available pipe segments
     "101-111_short": new Image() // just an example, will be filled by init code
   },
+  availByTop: {
+    "101": ["101-111_short"], // filled by loading
+  },
   current: {/* new pipe segment entering the screen */
     height: 240,/* height of the pipes segment image */
     width: 320,/* width of our image, default 320 */
@@ -56,17 +59,21 @@ game.pipe = {/* Background pipe segments */
     kind: "_short", /* the 'kind' of a segment provides infos e.g. about crossings or imageheight, default: "_short" */
     setImagePath: function () { /* define a function to calculate an image path with passed connectors */
       this.imagePath = this.top + "-" + this.bottom + this.kind; /* Imagepath of a 1-3 pipes segment, e.g. "010-010_short.png" */
+      this.image = game.pipe.available[this.imagePath];
     },
+    image: new Image(),
   },
   last: {/* pipe segment which leaves the screen */
     height: 240,/* height of the pipes segment image, default: 240px */
     width: 320,/* width of our image, default: 320px */
-    top: "001", /* top connections of 3 lanes, default: start one middle lane */
+    top: "010", /* top connections of 3 lanes, default: start one middle lane */
     bottom: "010", /* bottom connections of 3 lanes, default: middle lane */
     kind: "_short", /* the 'kind' of a segment provides infos e.g. about crossings or imageheight, default: "_short" */
     setImagePath: function () { /* define a function to calculate an image path with passed connectors */
       this.imagePath = this.top + "-" + this.bottom + this.kind; /* Imagepath of a 1-3 pipes segment, e.g. "010-010_short.png" */
+      this.image = game.pipe.available[this.imagePath];
     },
+    image: new Image(),
   }
 };
 
@@ -92,15 +99,6 @@ game.mrBrown = {/* Our hero sprite! */
         // will be filled upon load
       },
     },
-};
-
-game.random = {/* random generator for pipes */
-  makeRandom: function () {
-    this.lane1 = Math.round(Math.random ()); /* generate non-/existing left pipe */
-    this.lane2 = Math.round(Math.random ()); /* generate non-/existing middle pipe */
-    this.lane3 = Math.round(Math.random ()); /* generate non-/existing right pipe */
-    this.kind = "_short"; /* here will be variations of pipes generated (e.g. "_short" = pipesimage 240px high, "_cross" lanes crossing, "_fancy" = eyecandy background stuff) */
-  }
 };
 
 game.init = function init(){ /* Initialising canvas */
@@ -130,7 +128,6 @@ game.init = function init(){ /* Initialising canvas */
     game.state.renderFunc = fall;
 
   });
-  fileCheck("../res/pipes/111/111-111.png", console.log.bind(console));
 }
 
 function render(t) {
@@ -160,28 +157,43 @@ function loadScreen() {
 function fall() {
   var w = game.resolution.width, h = game.resolution.height;
   var offset = game.pipe.offset;
-  var currentImage = game.pipe.available[game.pipe.current.imagePath];
-  var lastImage = game.pipe.available[game.pipe.last.imagePath];
+  var current = game.pipe.current;
+  var last = game.pipe.last;
   
   game.context.clearRect(0, 0, w, h);
-  game.context.drawImage(lastImage,
-    0, -offset * lastImage.height,
-    lastImage.width, lastImage.height)
-  game.context.drawImage(currentImage,
-    0, -offset * currentImage.height + currentImage.height,
-    currentImage.width, currentImage.height);
+  game.context.drawImage(last.image,
+    0, -offset,
+    last.width, last.height)
+  game.context.drawImage(current.image,
+    0, -offset + last.height,
+    current.width, current.height);
 
   game.pipe.offset += game.state.dt * game.speed;
-  if (game.pipe.offset >= 1) {
-    game.pipe.offset -= 1;
+  if (game.pipe.offset >= last.height) {
+    game.pipe.offset -= last.height;
     var next = game.pipe.last;
     game.pipe.last = game.pipe.current;
 
     next.top = game.pipe.last.bottom;
-    next.bottom = next.top; // TODO randomly generate
+    //next.bottom = next.top;
+    choosePipe(next);
     next.setImagePath();
+    next.width = next.image.width;
+    next.height = next.image.height;
     game.pipe.current = next;
-    console.log("next pipe:", game.pipe.current);
+    console.log("next pipe:", next.imagePath);
+  }
+}
+
+function choosePipe(pipe) {
+  var avail = game.pipe.availByTop[pipe.top];
+  var choose = avail[(Math.random() * avail.length) | 0];
+  if (choose.indexOf("_") != -1) {
+    pipe.bottom = choose.slice(choose.indexOf("-")+1, choose.indexOf("_"));
+    pipe.kind = choose.slice(choose.indexOf("_"), choose.length);
+  } else {
+    pipe.bottom = choose.slice(choose.indexOf("-")+1, choose.length);
+    pipe.kind = "";
   }
 }
 
@@ -221,7 +233,17 @@ function loadPipes() {
               } else {
                 modifiers_num[modifier] = 1;
               }
-              game.pipe.available[base_from + "-" + base_to + modifier] = image;
+              var identifier = base_from + "-" + base_to + modifier;
+              game.pipe.available[identifier] = image;
+              
+              // availByTop
+              var availByTop = game.pipe.availByTop[base_from];
+              if (!availByTop) {
+                availByTop = [];
+                game.pipe.availByTop[base_from] = availByTop;
+              }
+              availByTop.push(identifier);
+
               resolve();
             }.bind(this, base_from, base_to, modifier));
           }.bind(this, path));
