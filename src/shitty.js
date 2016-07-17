@@ -18,13 +18,18 @@ game.resolution = {
 };
 
 game.speed = 50; // pixels per second
+game.fallSpeed = 2;
+game.drag = 0.2;
+game.moveAccel = 5;
+game.maxV = 150;
 
 game.state = {
   loadPercent: 0,
   renderFunc: loadScreen,
   animFrame: null,
   t: 0, // time in seconds
-  dt: 0, // time since last frame
+  dt: 0, // time since last frame,
+  keysDown: Array(256).fill(false),
 };
 
 game.pipe = {/* Background pipe segments */
@@ -97,7 +102,8 @@ game.mrBrown = {/* Our hero sprite! */
     images: {
       // image data, will be filled upon load
     },
-    moveState: "", // one of '', 'left', 'right', 'up', 'down'
+    vx: 0, vy: 0, // velocity
+    ax: 0, ay: 0, // acceleration
 };
 
 game.init = function init(delay){ /* Initialising canvas */
@@ -110,8 +116,7 @@ game.init = function init(delay){ /* Initialising canvas */
   console.log("|_|\\_\\_|\\___/|_.__/ \\___/ \\__| ");
   console.log("## may the shit be with you ##");
 
-  this.canvas = document.createElement('canvas'); /* create a <canvas> in the browser window */
-  document.body.appendChild(this.canvas); /* adds the canvas to the html <body> element */
+  this.canvas = document.getElementById('canvas'); /* get the <canvas> in the browser window */
 
   this.canvas.width = this.resolution.width; /* apply the defined screen resolution to the canvas */
   this.canvas.height = this.resolution.height;
@@ -119,6 +124,7 @@ game.init = function init(delay){ /* Initialising canvas */
 
   game.state.animFrame = requestAnimationFrame(render);
   document.addEventListener('keydown', game.keydown);
+  document.addEventListener('keyup', game.keyup);
 
   var pipesPromise = loadPipes();
   pipesPromise.then(function(){
@@ -132,7 +138,40 @@ game.init = function init(delay){ /* Initialising canvas */
 }
 
 game.keydown = function(e) {
+  //console.log(e.keyCode);
+  if (game.state.keysDown[e.keyCode]) {
+    return;
+  }
+  game.state.keysDown[e.keyCode] = true;
+  switch (e.keyCode) {
+    case 39: // right
+      game.keyup({keyCode: 37});
+      game.mrBrown.vx = 0;
+      game.mrBrown.ax = game.moveAccel;
+    break;
+    case 37: // left
+      game.keyup({keyCode: 39});
+      game.mrBrown.vx = 0;
+      game.mrBrown.ax = -game.moveAccel;
+    break;
+  }
+};
 
+game.keyup = function(e) {
+  if (!game.state.keysDown[e.keyCode]) {
+    return;
+  }
+  game.state.keysDown[e.keyCode] = false;
+  switch (e.keyCode) {
+    case 39: // right
+      //game.mrBrown.vx = 0;
+      game.mrBrown.ax = 0;
+    break;
+    case 37: // left
+      //game.mrBrown.vx = 0;
+      game.mrBrown.ax = 0;
+    break;
+  }
 };
 
 function render(t) {
@@ -179,7 +218,7 @@ function fall() {
     game.mrBrown.width, game.mrBrown.height);
 
   // move pipes, select new ones
-  game.pipe.offset += game.state.dt * game.speed;
+  game.pipe.offset += game.state.dt * game.speed * game.fallSpeed;
   if (game.pipe.offset >= last.height) {
     game.pipe.offset -= last.height;
     var next = game.pipe.last;
@@ -194,6 +233,23 @@ function fall() {
     game.pipe.current = next;
     console.log("next pipe:", next.imagePath);
   }
+
+  // move mrbrown
+  var vDir = Math.sign(game.mrBrown.vx);
+  var doDrag = Math.abs(game.mrBrown.ax) > 0 ? 0 : 1;
+  var dragAmount = doDrag * game.drag;
+  var absVx = Math.abs(game.mrBrown.vx);
+  game.mrBrown.vx -= (dragAmount > absVx ? absVx : dragAmount) * vDir;
+  
+  game.mrBrown.x += game.mrBrown.vx * game.state.dt * game.speed;
+
+  game.mrBrown.vx += game.mrBrown.ax * game.state.dt;
+  vDir = Math.sign(game.mrBrown.vx);
+  game.mrBrown.vx = vDir * Math.min(game.maxV, Math.abs(game.mrBrown.vx));
+  
+  document.getElementById("stats").innerHTML = "vx: " + game.mrBrown.vx.toFixed(3) +
+    ", ax: " + game.mrBrown.ax.toFixed(3) + ", dt: " + game.state.dt.toFixed(4) + "<br>" +
+    "vDir: " + vDir.toFixed(1) + ", doDrag: " + doDrag;
 }
 
 function choosePipe(pipe) {
