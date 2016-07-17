@@ -78,30 +78,29 @@ game.pipe = {/* Background pipe segments */
 };
 
 game.mrBrown = {/* Our hero sprite! */
-    image: {
-      height: 40,/* height of Mr.Brown sprite*/
-      width: 40,/* width of Mr.Brown sprite*/
-      setInitPosition: function () { /* define a function to calculate the initial top left corner position of Mr.Brown sprite */
-        this.position.y = Math.round((game.resolution.height*0.382) - (game.mrBrown.image.height/2)) /* default: golden ratio */
-        this.position.x = Math.round(game.resolution.width/2) /* default startposition: middle lane*/
-       },
-      position: {},
-      paths: {
-        base:"../res/sprites/", /* path to sprite images */
-        standard: "mrbrown.gif", /* animated shit sprite Mr. Brown */
-        /* more movement animation todo...
-        leftmove: this.mrBrown.path + "mrbrownleft.gif",
-        rightmove: this.mrBrown.path + "mrbrownright.gif",
-        collision: this.mrBrown.path + "mrbrownsplash.gif",
-        */
-      },
-      data: {
-        // will be filled upon load
-      },
+    height: 40,/* height of Mr.Brown sprite*/
+    width: 40,/* width of Mr.Brown sprite*/
+    setInitPosition: function () { /* define a function to calculate the initial top left corner position of Mr.Brown sprite */
+      this.y = Math.round((game.resolution.height*0.382) - (game.mrBrown.height/2)) /* default: golden ratio */
+      this.x = Math.round(game.resolution.width/2) /* default startposition: middle lane*/
+     },
+    x: 0, y: 0,
+    imagePaths: {
+      base:"../res/sprites/", /* path to sprite images */
+      standard: "mrbrown.gif", /* animated shit sprite Mr. Brown */
+      /* more movement animation todo...
+      leftmove: this.mrBrown.path + "mrbrownleft.gif",
+      rightmove: this.mrBrown.path + "mrbrownright.gif",
+      collision: this.mrBrown.path + "mrbrownsplash.gif",
+      */
     },
+    images: {
+      // image data, will be filled upon load
+    },
+    moveState: "", // one of '', 'left', 'right', 'up', 'down'
 };
 
-game.init = function init(){ /* Initialising canvas */
+game.init = function init(delay){ /* Initialising canvas */
   /* draw a nice debug ascii-picture in the console for developers happyness*/
   console.log(" _    _       _           _    ");
   console.log("| |  | |     | |         | |   ");
@@ -119,16 +118,22 @@ game.init = function init(){ /* Initialising canvas */
   this.context = this.canvas.getContext('2d'); /* provide a 2D rendering context for the drawing surface of a <canvas> element. */
 
   game.state.animFrame = requestAnimationFrame(render);
+  document.addEventListener('keydown', game.keydown);
 
   var pipesPromise = loadPipes();
   pipesPromise.then(function(){
     console.log(game);
+    game.mrBrown.setInitPosition();
     game.pipe.current.setImagePath();
     game.pipe.last.setImagePath();
     game.state.renderFunc = fall;
 
   });
 }
+
+game.keydown = function(e) {
+
+};
 
 function render(t) {
   game.state.animFrame = requestAnimationFrame(render);
@@ -167,7 +172,13 @@ function fall() {
   game.context.drawImage(current.image,
     0, -offset + last.height,
     current.width, current.height);
+  
+  // draw mrbrown
+  game.context.drawImage(game.mrBrown.images['standard'],
+    game.mrBrown.x - game.mrBrown.width/2, game.mrBrown.y - game.mrBrown.height/2,
+    game.mrBrown.width, game.mrBrown.height);
 
+  // move pipes, select new ones
   game.pipe.offset += game.state.dt * game.speed;
   if (game.pipe.offset >= last.height) {
     game.pipe.offset -= last.height;
@@ -206,7 +217,7 @@ function loadPipes() {
   var promises = [];
   var totalTries = 0, doneTries = 0;
   totalTries += 10; // for the stat calculation
-  totalTries += Object.keys(game.mrBrown.image.paths).length - 1; // base does not count
+  totalTries += Object.keys(game.mrBrown.imagePaths).length - 1; // base does not count
   for (var i_from in bases) {
     var base_from = bases[i_from];
     for (var i_to in bases) {
@@ -254,9 +265,9 @@ function loadPipes() {
     }
   }
   // load mr. brown images
-  for (var type in game.mrBrown.image.paths) {
+  for (var type in game.mrBrown.imagePaths) {
     if (type == "base") continue;
-    var path = game.mrBrown.image.paths.base + game.mrBrown.image.paths[type];
+    var path = game.mrBrown.imagePaths.base + game.mrBrown.imagePaths[type];
     promises.push(new Promise(function(resolve, reject){
       fileCheck(path, function(data){
         doneTries++;
@@ -264,7 +275,7 @@ function loadPipes() {
         if (!data) {
           reject("mr brown "+ type + " not found!");
         }
-        game.mrBrown.image.data[type];
+        game.mrBrown.images[type] = data;
         resolve();
       });
     }));
@@ -301,16 +312,12 @@ function fileCheck(path, callback) {
 
     game.context.clearRect(0,0,1,1); // clear the state
     var pixelState = game.context.getImageData(0,0,1,1).data;
-    //console.log("pixelState before: " + pixelState.join(",")); /* DEBUG Information for developers in the console */
 
     game.context.drawImage(img, 0,0,1,1); /* draw the possibly existing image in size 1x1px in this testpixel */
     var pixelHack = game.context.getImageData(0,0,1,1).data; /* if the image exists, it will been drawn and changes the color of that pixel */
-    //console.log("pixelState after:  " + pixelHack.join(",")); /* DEBUG Information for developers in the console */
 
     game.context.fillStyle = "rgba(" + originalState.join(",") + ")"; /* prepare the old color for a rectangle to overwrite that testpixel */
     game.context.fillRect(0,0,1,1); /* draw a 1x1 rectangle at the testpixel with the original color*/
-    var pixelReckt = game.context.getImageData(0,0,1,1).data; /* get the new testpixel color after the rectangle was drawn */
-    //console.log("pixelState afterresetting: " + pixelReckt.join(",")); /* DEBUG Information for developers in the console */
     if (pixelState.join("") === pixelHack.join(""))/* compare if the color of this pixel has changed */
       callback(false);/* false if the pixelcolor stayed the same aka. the file didn't exist and wasn't drawn */
     else
